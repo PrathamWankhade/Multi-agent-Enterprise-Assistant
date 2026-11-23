@@ -189,7 +189,6 @@ button, textarea, input { font-family: inherit; font-size: inherit; color: inher
   width: 100%; padding: 9px 10px;
   background: none; border: 1px solid transparent; border-radius: var(--r-sm);
   color: var(--text-2); cursor: pointer; text-align: left; font-size: 13.5px;
-  text-decoration: none;
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }

@@ -159,7 +159,7 @@ The stack includes Qdrant + Redis with healthchecks and persistent volumes. Olla
 | 🧪 [Testing & Development](docs/DEVELOPMENT.md) | Test suite, extending agents/tools |
 | ☁️ [Azure Deployment](AZURE_DEPLOYMENT.md) | Optional cloud deployment and managed identity |
 
-> **In-app docs:** open `http://127.0.0.1:8000/documentation` for a styled, browsable version of these guides.
+All guides are on **GitHub**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md), and the rest linked in the table above. They render natively on GitHub with Mermaid diagrams.
 
 ---
 

@@ -82,8 +82,4 @@ Static frontend files are served with `Cache-Control: no-store`, so browser edit
 
 ## Documentation
 
-This documentation lives in `docs/` and is also served as a styled in-app page at `/documentation`.
-
-- Update the relevant `docs/*.md` file when behavior changes.
-- Keep the README's feature/API tables in sync.
-- Diagrams use Mermaid (rendered natively on GitHub).
+This documentation lives in `docs/` and renders directly on GitHub (including the Mermaid diagrams). Update the relevant `docs/*.md` file when behavior changes and keep the README's feature/API tables in sync.
