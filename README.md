@@ -335,7 +335,7 @@ The suite runs 100% offline — no Ollama, Qdrant, Redis or network needed.
 
 ```bash
 python -m pytest tests/ -q
-# 33 passed
+# 41 passed
 ```
 
 Coverage highlights:
@@ -343,6 +343,7 @@ Coverage highlights:
 - `test_api.py` — health, static routes, chat, traces, audit, ingest/search, sessions
 - `test_tools.py` — registry, argument validation, read-only SQL, approve/reject
 - `test_review.py` — hallucination/citation checks, verdicts, persistence
+- `test_azure.py` — managed identity, provider detection, mocked Search index/upload/search/delete
 - `test_auth.py` — all three roles, 401/403 paths, Bearer tokens, auth audit events
 
 ## Docker deployment
