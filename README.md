@@ -111,7 +111,7 @@ sequenceDiagram
 ```bash
 # 1. Clone & install
 git clone https://github.com/PrathamWankhade/Multi-agent-Enterprise-Assistant.git
-cd Multi-agent-Enterprise-Assistant/multi_agent_assistant
+cd Multi-agent-Enterprise-Assistant
 pip install -r requirements.txt
 
 # 2. Pull local models (no cloud credentials needed)
@@ -217,7 +217,7 @@ The suite forces mock mode via `tests/conftest.py` and covers the API, tools, ap
 ## 📁 Project Structure
 
 ```text
-multi_agent_assistant/
+Multi-agent-Enterprise-Assistant/
 ├── app/
 │   ├── agents/          # Orchestrator, Research, Analyst, Execution, Review
 │   ├── api/             # Routes, Pydantic schemas

@@ -7,7 +7,7 @@ Solutions to the most common issues. When anything external fails, the app logs 
 ## The UI shows "Backend unreachable"
 
 1. Confirm the server is running: `curl http://127.0.0.1:8000/api/v1/health`.
-2. On Windows, start it from the `multi_agent_assistant/` folder with `python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`.
+2. On Windows, start it from the repository root with `python -m uvicorn app.main:app --host 127.0.0.1 --port 8000`.
 3. Check for port conflicts (another process on 8000).
 4. Inspect `srv_err.log` for startup errors.
 
