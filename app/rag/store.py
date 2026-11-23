@@ -202,10 +202,24 @@ class VectorStore:
                 logger.debug("Payload index for %s: %s", field, exc)
 
     async def _init_azure_ai_search(self) -> None:
+        from app.rag.azure_search import AzureSearchClient
+
         logger.info(
             "Azure AI Search backend selected (index: %s)",
             self.settings.azure_ai_search_index_name,
         )
+        client = AzureSearchClient(
+            endpoint=self.settings.azure_ai_search_endpoint or "",
+            index=self.settings.azure_ai_search_index_name or "enterprise-kb",
+            api_key=self.settings.azure_ai_search_api_key,
+        )
+        # The embedding model determines the vector dimension, just like Qdrant.
+        probe = await self.llm.embed_text("dimension probe")
+        dim = len(probe) or 1536
+        available = await client.ensure_index(dim)
+        if not available:
+            raise RuntimeError("Azure AI Search index could not be created/reached")
+        self._azure_search = client
 
     async def add_chunks(self, chunks: List[Chunk]) -> List[str]:
         if not chunks:
@@ -248,7 +262,7 @@ class VectorStore:
         return [c.chunk_id for c in chunks]
 
     async def _add_chunks_azure_ai_search(self, chunks: List[Chunk]) -> List[str]:
-        return [c.chunk_id for c in chunks]
+        return await self._azure_search.upload(chunks)
 
     async def search(
         self,
@@ -313,12 +327,16 @@ class VectorStore:
         filter_doc_id: Optional[str],
         min_score: float,
     ) -> List[Dict[str, Any]]:
-        return []
+        return await self._azure_search.search(
+            query_embedding, top_k, filter_doc_id, min_score
+        )
 
     async def count(self) -> int:
         """Return the number of stored points (0 when unavailable)."""
-        if not self.available or self._backend != "qdrant":
+        if not self.available:
             return 0
+        if self._backend == "azure_ai_search":
+            return await self._azure_search.count()
         try:
             info = self._qdrant.get_collection(
                 collection_name=self._collection
@@ -330,8 +348,10 @@ class VectorStore:
 
     async def list_documents(self) -> List[Dict[str, Any]]:
         """Aggregate stored chunks by document for the knowledge-base view."""
-        if not self.available or self._backend != "qdrant":
+        if not self.available:
             return []
+        if self._backend == "azure_ai_search":
+            return await self._azure_search.list_documents()
         try:
             docs: Dict[str, Dict[str, Any]] = {}
             offset = None
@@ -369,6 +389,10 @@ class VectorStore:
             return []
 
     async def delete_document(self, doc_id: str) -> int:
+        if not self.available:
+            return 0
+        if self._backend == "azure_ai_search":
+            return await self._azure_search.delete_document(doc_id)
         if self._backend == "qdrant":
             from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 

@@ -55,6 +55,7 @@ class TaskTrace:
         step["status"] = status
         if meta:
             step["meta"] = meta
+        return duration
 
     def _find(self, agent: str) -> Optional[Dict[str, Any]]:
         for step in self.steps:

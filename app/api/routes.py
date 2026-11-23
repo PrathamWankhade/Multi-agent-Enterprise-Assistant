@@ -713,7 +713,10 @@ async def audit_tail(lines: int = 50, _role=require_admin):
     from datetime import datetime, timezone
 
     settings = get_settings()
-    path = os.path.join(settings.audit_dir, f"audit-{datetime.now(timezone.utc):strftime('%Y-%m-%d')}.log")
+    path = os.path.join(
+        settings.audit_dir,
+        "audit-" + datetime.now(timezone.utc).strftime("%Y-%m-%d") + ".log",
+    )
     if not os.path.exists(path):
         return {"entries": []}
     try:

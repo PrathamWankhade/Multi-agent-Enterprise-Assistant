@@ -12,6 +12,8 @@ human-approval workflow, and Azure deployment support.
 - **Review Agent** - Verifies the drafted answer against retrieved evidence, flags unsupported claims, and rewrites when needed
 - **Tool framework** - Schema-validated registry with `read` / `write` risk levels (`app/tools/`)
 - **Human approval** - Write tools pause until approved or rejected through the UI or API
+- **Security** - Optional API-key auth with viewer/user/admin roles (OFF by default)
+- **Monitoring** - Per-agent execution traces + structured JSON-lines audit trail
 - **Memory Layer** - Redis-backed conversation and task context (in-memory fallback)
 - **Backend** - Python + FastAPI
 - **Cloud** - Azure AI Foundry + Azure Functions ready
@@ -158,8 +160,11 @@ Open **http://127.0.0.1:8000/** — a single-page workspace, no build step requi
 | `/api/v1/sessions/{id}/history` | GET | Stored conversation history |
 | `/api/v1/sessions/{id}` | DELETE | Clear a conversation |
 | `/api/v1/tools` | GET | Registered tools with schemas and risk levels |
-| `/api/v1/tasks/{id}/approve` | POST | Approve and execute a pending write action |
-| `/api/v1/tasks/{id}/reject` | POST | Reject a pending write action |
+| `/api/v1/tasks/{id}/approve` | POST | Approve and execute a pending write action (admin) |
+| `/api/v1/tasks/{id}/reject` | POST | Reject a pending write action (admin) |
+| `/api/v1/tasks/{id}/trace` | GET | Agent execution timings for a task (viewer) |
+| `/api/v1/audit` | GET | Recent audit events (admin) |
+| `/api/v1/audit/tail` | GET | Raw tail of today's audit log file (admin) |
 | `/api/v1/health` | GET | Health check |
 | `/docs` | GET | Interactive API docs (Swagger) |
 
@@ -210,6 +215,51 @@ curl -X POST http://127.0.0.1:8000/api/v1/tasks/{task_id}/approve
 
 With `auto_approve: true` the action runs immediately (for trusted callers).
 
+## Security & governance
+
+Authentication is **off by default**, so local/demo use needs no setup. Turn it
+on when deploying:
+
+```env
+AUTH_ENABLED=true
+API_KEYS="long-random-admin-key:admin,long-random-user-key:user,long-random-view-key:viewer"
+```
+
+Clients send `X-API-Key: <key>` (or `Authorization: Bearer <key>`). The UI has a
+key button in the top bar that stores the key in `localStorage` only.
+
+| Role | Allowed |
+|---|---|
+| `viewer` | health, KB list, search, tools list, session history, task traces |
+| `user` | viewer + chat, ingest, clear sessions |
+| `admin` | user + approve/reject actions, delete KB documents, read audit log |
+
+Security-relevant events (`chat_requested`, `approval_granted`,
+`approval_rejected`, `auth_failed`, `kb_document_deleted`, …) are appended to
+`logs/audit-YYYY-MM-DD.log` as JSON lines and exposed through `/api/v1/audit`.
+Failed auth (missing/invalid key, insufficient role) is always recorded.
+
+## Monitoring & evaluation
+
+Every chat response includes a **trace** with per-agent durations:
+
+```json
+"trace": {
+  "task_id": "...",
+  "total_ms": 4821,
+  "steps": [
+    {"agent": "orchestrator", "duration_ms": 312, "status": "ok"},
+    {"agent": "research", "duration_ms": 2110, "status": "ok"},
+    {"agent": "synthesis", "duration_ms": 5, "status": "ok"},
+    {"agent": "review", "duration_ms": 2394, "status": "ok"}
+  ]
+}
+```
+
+Fetch it later with `GET /api/v1/tasks/{id}/trace`. The UI shows each duration
+next to its pipeline step and the Review Agent's verdict in the message meta
+line — evidence of real multi-agent execution, not just a chat log.
+
 ## Configuration
 
 See `.env.example` for all environment variables. Key settings:
@@ -226,6 +276,8 @@ See `.env.example` for all environment variables. Key settings:
   groundedness pass adds one model call per answer (disable on slow CPUs)
 - `TOOLS_ENABLED` — Enable/disable the enterprise tool framework
 - `SQLITE_PATH` / `REPORTS_DIR` — Mock database and CSV report output locations
+- `AUTH_ENABLED` / `API_KEYS` — API-key auth with roles (off by default)
+- `AUDIT_DIR` / `TRACING_ENABLED` — Audit log directory and agent timing traces
 
 ## Graceful degradation
 
@@ -246,7 +298,25 @@ dimension no longer matches a **populated** collection, the app switches to a
 dimension-suffixed collection (e.g. `enterprise_kb_d768`) and leaves the
 original intact. Only empty collections are recreated.
 
-## Azure Deployment
+## Azure deployment (optional, Phase 6)
+
+The **local stack is the primary setup** — Azure is a fully optional future
+integration. Everything needed to deploy is in [`AZURE_DEPLOYMENT.md`](./AZURE_DEPLOYMENT.md):
+
+- **Azure OpenAI** — chat + embeddings through the existing OpenAI SDK, with
+  API key **or** passwordless `DefaultAzureCredential` managed identity.
+- **Azure AI Search** — a real REST backend (`app/rag/azure_search.py`) with
+  index creation, vector upsert/search, document listing and deletion.
+- **`azure/main.bicep`** — Container Apps + AI Search + Redis + Key Vault +
+  Log Analytics, with a managed identity and RBAC role assignment.
+- **`azure.yaml`** — one-command `azd up` provisioning + deployment.
+- **`requirements-azure.txt`** — optional `azure-identity` for managed identity.
+
+Switching providers needs **zero code changes** — set the `AZURE_*` variables in
+`.env`. Placeholder/empty values are ignored, so an unfinished Azure config
+never breaks local mode. Auth, approvals, audit and tracing work identically.
+
+## Cloud provider readiness
 
 The system is designed for Azure AI Foundry and Azure Functions:
 
@@ -260,10 +330,39 @@ The system is designed for Azure AI Foundry and Azure Functions:
 
 ## Testing
 
+The suite runs 100% offline — no Ollama, Qdrant, Redis or network needed.
+`tests/conftest.py` forces mock mode before importing the app.
+
 ```bash
-pip install pytest pytest-asyncio
-pytest tests/
+python -m pytest tests/ -q
+# 33 passed
 ```
+
+Coverage highlights:
+
+- `test_api.py` — health, static routes, chat, traces, audit, ingest/search, sessions
+- `test_tools.py` — registry, argument validation, read-only SQL, approve/reject
+- `test_review.py` — hallucination/citation checks, verdicts, persistence
+- `test_auth.py` — all three roles, 401/403 paths, Bearer tokens, auth audit events
+
+## Docker deployment
+
+```bash
+# Full local stack: app + Qdrant + Redis (Ollama runs on the host)
+docker compose up --build -d
+
+# Health check
+curl http://localhost:8000/api/v1/health
+```
+
+`docker-compose.yml` uses persistent volumes for Qdrant and Redis, mounts
+`./data`, `./reports` and `./logs` for the mock database/reports/audit trail,
+and configures the app to reach host Ollama at `host.docker.internal:11434`.
+The image runs a non-root-friendly layout with a `HEALTHCHECK` on `/health`.
+
+For cloud Qdrant/Redis, leave those services out and put your connection
+settings in `.env` (the `environment:` block in compose overrides `.env` —
+remove the overrides when using cloud endpoints).
 
 ## License
 

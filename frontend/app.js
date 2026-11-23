@@ -6,6 +6,32 @@ const API = '/api/v1';
 const $ = (id) => document.getElementById(id);
 const STORE_KEY = 'eaa.sessions.v1';
 const THEME_KEY = 'eaa.theme';
+const KEY_STORAGE = 'eaa.apikey';
+
+function getApiKey() {
+  try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (_) { return ''; }
+}
+function setApiKey(value) {
+  try {
+    if (value) localStorage.setItem(KEY_STORAGE, value);
+    else localStorage.removeItem(KEY_STORAGE);
+  } catch (_) { /* private mode — ignore */ }
+}
+
+/** All API calls go through here so RBAC works from the UI too. */
+function apiFetch(path, options) {
+  const opts = Object.assign({}, options || {});
+  const headers = Object.assign({}, opts.headers || {});
+  const key = getApiKey();
+  if (key) headers['X-API-Key'] = key;
+  opts.headers = headers;
+  return fetch(API + path, opts).then((res) => {
+    if (res.status === 401 || res.status === 403) {
+      toast('Authentication required — set an API key', true);
+    }
+    return res;
+  });
+}
 
 const state = {
   sessions: [],
@@ -200,7 +226,7 @@ function switchSession(id) {
 
 function deleteSession(id) {
   state.sessions = state.sessions.filter((s) => s.id !== id);
-  fetch(API + '/sessions/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
+apiFetch('/sessions/' + encodeURIComponent(id), { method: 'DELETE' }).catch(() => {});
   if (state.activeId === id) {
     state.activeId = state.sessions.length ? state.sessions[0].id : null;
     if (!state.activeId) newSession(false);
@@ -318,7 +344,7 @@ function approvalCard(m) {
     reject.disabled = true;
     approve.textContent = 'Running…';
     try {
-      const r = await fetch(API + '/tasks/' + encodeURIComponent(m.taskId) + '/approve', { method: 'POST' });
+      const r = await apiFetch('/tasks/' + encodeURIComponent(m.taskId) + '/approve', { method: 'POST' });
       const d = await r.json();
       if (!r.ok) throw new Error(d.detail || 'HTTP ' + r.status);
       m.pendingResolved = 'approved';
@@ -346,7 +372,7 @@ function approvalCard(m) {
     approve.disabled = true;
     reject.disabled = true;
     try {
-      await fetch(API + '/tasks/' + encodeURIComponent(m.taskId) + '/reject', { method: 'POST' });
+      await apiFetch('/tasks/' + encodeURIComponent(m.taskId) + '/reject', { method: 'POST' });
       m.pendingResolved = 'rejected';
       renderMessages();
       toast('Action rejected');
@@ -647,7 +673,7 @@ async function sendMessage(text) {
   };
 
   try {
-    const res = await fetch(API + '/chat/stream', {
+    const res = await apiFetch('/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
       body: JSON.stringify({ message: query, session_id: s.id }),
@@ -699,6 +725,10 @@ async function sendMessage(text) {
           if (payload.chunk_count != null) note = payload.chunk_count + (payload.chunk_count === 1 ? ' chunk' : ' chunks');
           else if (payload.agent === 'review') note = payload.verdict === 'pass' ? 'approved' : (payload.issues || 0) + ' issue(s)';
           else if (payload.status) note = payload.status;
+          if (payload.duration_ms != null) {
+            const dur = (payload.duration_ms / 1000).toFixed(1) + 's';
+            note = note ? note + ' · ' + dur : dur;
+          }
           markStep(pipeline, payload.agent, 'done', note);
         } else if (event === 'final') {
           finished = true;
@@ -783,7 +813,7 @@ async function openKnowledgeBase() {
 
   let data;
   try {
-    const r = await fetch(API + '/kb/documents');
+    const r = await apiFetch('/kb/documents');
     data = await r.json();
   } catch (_) {
     node.innerHTML = '<p class="empty-note">Could not load the knowledge base.</p>';
@@ -814,7 +844,7 @@ async function openKnowledgeBase() {
     addBtn.disabled = true;
     addBtn.textContent = 'Indexing…';
     try {
-      const r = await fetch(API + '/ingest', {
+      const r = await apiFetch('/ingest', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, source }),
       });
@@ -848,7 +878,7 @@ async function openKnowledgeBase() {
     del.addEventListener('click', async () => {
       del.disabled = true;
       try {
-        const r = await fetch(API + '/kb/documents/' + encodeURIComponent(doc.doc_id), { method: 'DELETE' });
+        const r = await apiFetch('/kb/documents/' + encodeURIComponent(doc.doc_id), { method: 'DELETE' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         toast('Removed ' + doc.source);
         openKnowledgeBase();
@@ -864,6 +894,54 @@ async function openKnowledgeBase() {
     p.textContent = 'Nothing indexed yet. Add a document above to get started.';
     node.appendChild(p);
   }
+}
+
+function openApiKeyModal() {
+  const node = document.createElement('div');
+  node.style.display = 'flex';
+  node.style.flexDirection = 'column';
+  node.style.gap = '14px';
+
+  const info = document.createElement('p');
+  info.className = 'approval-note';
+  info.textContent = 'If your deployment has AUTH_ENABLED=true, enter an API key with the user or admin role. Stored only in this browser.';
+  node.appendChild(info);
+
+  const field = document.createElement('div');
+  field.className = 'field';
+  field.innerHTML = '<label for="api-key-input">X-API-Key</label>' +
+    '<input id="api-key-input" type="password" autocomplete="off" placeholder="Leave blank to disable" value="' +
+    escapeHtml(getApiKey()) + '">';
+  node.appendChild(field);
+
+  const row = document.createElement('div');
+  row.className = 'approval-actions';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'btn btn-primary btn-sm';
+  save.textContent = 'Save key';
+  save.addEventListener('click', () => {
+    setApiKey($('api-key-input').value.trim());
+    closeModal();
+    toast(getApiKey() ? 'API key saved' : 'API key cleared');
+    loadHealth();
+  });
+  row.appendChild(save);
+
+  const clear = document.createElement('button');
+  clear.type = 'button';
+  clear.className = 'btn btn-ghost btn-sm';
+  clear.textContent = 'Clear';
+  clear.addEventListener('click', () => {
+    $('api-key-input').value = '';
+    setApiKey('');
+    toast('API key cleared');
+  });
+  row.appendChild(clear);
+  node.appendChild(row);
+
+  openModal('Authentication', node);
+  $('api-key-input').focus();
 }
 
 function openAgents() {
@@ -887,7 +965,7 @@ function openAgents() {
 
 async function loadHealth() {
   try {
-    const r = await fetch(API + '/health');
+    const r = await apiFetch('/health');
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const h = await r.json();
     state.health = h;
@@ -909,7 +987,7 @@ async function loadHealth() {
 
 async function loadKbCount() {
   try {
-    const r = await fetch(API + '/kb/documents');
+    const r = await apiFetch('/kb/documents');
     const d = await r.json();
     // A store that is still warming up reports unavailable; show a dash
     // rather than a misleading zero, and retry shortly.
@@ -990,7 +1068,7 @@ function bindEvents() {
     if (state.running) { toast('Wait for the current answer to finish'); return; }
     s.messages = [];
     s.title = 'New conversation';
-    fetch(API + '/sessions/' + encodeURIComponent(s.id), { method: 'DELETE' }).catch(() => {});
+    apiFetch('/sessions/' + encodeURIComponent(s.id), { method: 'DELETE' }).catch(() => {});
     saveSessions();
     renderAll();
     toast('Conversation cleared');
@@ -998,6 +1076,7 @@ function bindEvents() {
 
   $('open-kb').addEventListener('click', () => { closeSidebar(); openKnowledgeBase(); });
   $('open-agents').addEventListener('click', () => { closeSidebar(); openAgents(); });
+  $('open-key').addEventListener('click', openApiKeyModal);
   $('theme-toggle').addEventListener('click', () => {
     const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     applyTheme(next);

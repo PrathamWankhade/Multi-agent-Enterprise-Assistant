@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     azure_ai_search_endpoint: Optional[str] = Field(default=None)
     azure_ai_search_api_key: Optional[str] = Field(default=None)
     azure_ai_search_index_name: Optional[str] = Field(default=None)
+    azure_ai_search_api_version: str = Field(default="2024-07-01")
+
+    # Managed identity (optional): when true, tokens from DefaultAzureCredential
+    # are used instead of keys for Azure OpenAI and Azure AI Search. The
+    # `azure-identity` package is optional — without it the app falls back to
+    # keys or mock/offline mode, never crashing.
+    azure_use_managed_identity: bool = Field(default=False)
 
     # --- Memory Layer ---
     redis_host: str = Field(default="localhost")
@@ -98,12 +105,16 @@ class Settings(BaseSettings):
 
     @property
     def use_azure_openai(self) -> bool:
-        return bool(
+        endpoint_ok = bool(
             self.azure_openai_endpoint
-            and self.azure_openai_api_key
             and not self._is_placeholder(self.azure_openai_endpoint)
-            and not self._is_placeholder(self.azure_openai_api_key)
         )
+        if not endpoint_ok:
+            return False
+        # Managed identity replaces the need for an API key.
+        if self.azure_use_managed_identity:
+            return True
+        return bool(self.azure_openai_api_key and not self._is_placeholder(self.azure_openai_api_key))
 
     @property
     def use_openai(self) -> bool:
@@ -119,12 +130,15 @@ class Settings(BaseSettings):
 
     @property
     def use_azure_ai_search(self) -> bool:
-        return bool(
+        endpoint_ok = bool(
             self.azure_ai_search_endpoint
-            and self.azure_ai_search_api_key
             and not self._is_placeholder(self.azure_ai_search_endpoint)
-            and not self._is_placeholder(self.azure_ai_search_api_key)
         )
+        if not endpoint_ok:
+            return False
+        if self.azure_use_managed_identity:
+            return True
+        return bool(self.azure_ai_search_api_key and not self._is_placeholder(self.azure_ai_search_api_key))
 
     @property
     def allowed_origin_list(self) -> List[str]:

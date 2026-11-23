@@ -1,0 +1,9 @@
+# Optional Azure integrations (Phase 6).
+# The core app works without these — install only when using managed identity
+# with the official Azure SDKs. Azure AI Search uses REST via httpx and needs
+# no extra package; Azure OpenAI uses the existing `openai` SDK.
+#
+#   pip install -r requirements-azure.txt
+
+-r requirements.txt
+azure-identity>=1.17.0

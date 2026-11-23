@@ -101,7 +101,14 @@ Return ONLY the JSON object.
                 messages, temperature=0.0, max_tokens=500
             )
             parsed = self._parse_json(response)
-            if parsed and isinstance(parsed.get("tool"), (str, type(None))):
+            # Only trust tool selection when the model actually answered with a
+            # `tool` key. Mock/offline models return a generic plan JSON here;
+            # in that case fall through to the keyword heuristics below.
+            if (
+                parsed
+                and "tool" in parsed
+                and isinstance(parsed.get("tool"), (str, type(None)))
+            ):
                 tool = parsed.get("tool")
                 if tool and registry.get(str(tool)):
                     args = parsed.get("args")

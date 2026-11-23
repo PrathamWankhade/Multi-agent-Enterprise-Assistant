@@ -1,0 +1,28 @@
+# Never bake real credentials into the image.
+.env
+
+# Python caches / test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Runtime data (mounted as volumes instead)
+data/*.db
+data/enterprise.db
+reports/*
+logs/*
+*.log
+
+# Editor / OS noise
+.git/
+.gitignore
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Keep these: frontend/, app/, scripts/, data/*.md, requirements.txt,
+# Dockerfile, docker-compose.yml, README.md, .env.example

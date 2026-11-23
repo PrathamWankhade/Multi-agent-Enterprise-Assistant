@@ -36,11 +36,22 @@ class LLMService:
     def _build_client(self) -> Any:
         settings = self.settings
         if settings.use_azure_openai:
-            return AsyncAzureOpenAI(
+            try:
+                from app.services.azure_identity import get_azure_token_provider
+
+                token_provider = get_azure_token_provider()
+            except Exception:  # pragma: no cover
+                token_provider = None
+            kwargs: Dict[str, Any] = dict(
                 azure_endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
                 api_version=settings.azure_openai_api_version,
             )
+            if token_provider:
+                kwargs["azure_ad_token_provider"] = token_provider
+                logger.info("Azure OpenAI using managed identity")
+            else:
+                kwargs["api_key"] = settings.azure_openai_api_key
+            return AsyncAzureOpenAI(**kwargs)
         if settings.use_openai:
             return AsyncOpenAI(
                 api_key=settings.openai_api_key,
@@ -51,11 +62,21 @@ class LLMService:
     def _build_embedding_client(self) -> Any:
         settings = self.settings
         if settings.use_azure_openai:
-            return AsyncAzureOpenAI(
+            try:
+                from app.services.azure_identity import get_azure_token_provider
+
+                token_provider = get_azure_token_provider()
+            except Exception:  # pragma: no cover
+                token_provider = None
+            kwargs: Dict[str, Any] = dict(
                 azure_endpoint=settings.azure_openai_endpoint,
-                api_key=settings.azure_openai_api_key,
                 api_version=settings.azure_openai_api_version,
             )
+            if token_provider:
+                kwargs["azure_ad_token_provider"] = token_provider
+            else:
+                kwargs["api_key"] = settings.azure_openai_api_key
+            return AsyncAzureOpenAI(**kwargs)
         if settings.use_openai:
             return AsyncOpenAI(
                 api_key=settings.openai_api_key,

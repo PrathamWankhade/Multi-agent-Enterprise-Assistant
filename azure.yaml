@@ -1,0 +1,17 @@
+# Azure Developer CLI (azd) configuration.
+#   azd login
+#   azd init           # (once, in this folder)
+#   azd up             # provisions infra from azure/main.bicep + deploys the app
+name: multi-agent-enterprise-assistant
+
+services:
+  app:
+    project: .
+    language: python
+    host: containerapp
+    image: eaa-app
+
+infra:
+  provider: bicep
+  path: ./azure
+  module: main
