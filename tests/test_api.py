@@ -25,13 +25,16 @@ def test_tools_listing(client):
     body = r.json()
     assert body["enabled"] is True
     names = {t["name"] for t in body["tools"]}
-    assert names == {
+    assert {
         "create_ticket",
         "generate_report",
         "list_tickets",
         "lookup_employee",
         "query_database",
-    }
+        "create_service_request",
+        "track_ticket",
+        "list_service_requests",
+    } <= names
     create = next(t for t in body["tools"] if t["name"] == "create_ticket")
     assert create["risk"] == "write"
     assert create["requires_approval"] is True

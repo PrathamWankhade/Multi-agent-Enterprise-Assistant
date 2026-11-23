@@ -269,6 +269,16 @@ class LLMService:
                         "summary_for_user": "I will prepare the API action for your review and approval.",
                     }
                 )
+            if any(w in lower for w in ("vpn", "laptop", "printer", "not starting", "won't boot", "not connecting", "issue", "problem", "broken", "troubleshoot", "my ticket", "track")):
+                return json.dumps(
+                    {
+                        "intent": "itsm",
+                        "agents": ["itsm"],
+                        "reasoning": "User reports an IT problem or tracks a service request",
+                        "requires_approval": False,
+                        "summary_for_user": "I will classify the issue, check IT documentation and create a service request for approval.",
+                    }
+                )
             if any(w in lower for w in ("analyze", "insight", "summary", "recommend", "compare")):
                 return json.dumps(
                     {

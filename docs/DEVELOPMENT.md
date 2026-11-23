@@ -6,7 +6,7 @@
 
 ```bash
 python -m pytest tests/ -q
-# 41 passed in ~18s
+# 52 passed in ~20s
 ```
 
 100% offline. `tests/conftest.py` sets mock-mode environment variables **before** importing the app, so no Ollama, Qdrant, Redis or Azure account is needed.
@@ -18,6 +18,7 @@ python -m pytest tests/ -q
 | `test_review.py` | Citation/hallucination checks, verdicts, persistence |
 | `test_auth.py` | Roles, 401/403, Bearer tokens, auth audit events |
 | `test_azure.py` | Provider detection, managed identity, mocked Search index/upload/search/delete |
+| `test_itsm.py` | Classification, ticket lifecycle, approvals, technician updates, tracking, RBAC |
 
 **Writing tests:** use the session-scoped `client` fixture for HTTP calls, and `fresh_settings(**kwargs)` to temporarily change configuration for one test.
 

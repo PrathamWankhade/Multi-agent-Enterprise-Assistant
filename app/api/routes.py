@@ -75,6 +75,11 @@ async def _run_agent_pipeline(
     )
     plan = orch_result.get("plan", {})
     agents = plan.get("agents", ["research"])
+    # The LLM can classify intent correctly but still emit the wrong agent
+    # list. ITSM intent always runs the service-desk workflow.
+    if plan.get("intent") == "itsm":
+        agents = ["itsm"]
+        plan["agents"] = agents
     await send("plan", {"plan": plan})
     dur = trace.end("orchestrator", "ok", {"intent": plan.get("intent")})
     await send(
@@ -135,6 +140,36 @@ async def _run_agent_pipeline(
             dur = trace.end("analyst", "ok")
             await send("agent_done", {"agent": "analyst", "duration_ms": dur})
 
+        elif agent_name == "itsm":
+            trace.start("itsm", "service desk workflow")
+            await send("agent_start", {"agent": "itsm", "label": "Running service desk workflow"})
+            from app.workflows.itsm_workflow import run_itsm_workflow
+
+            res = await run_itsm_workflow(
+                message=message,
+                session_id=session_id,
+                task_id=task_id,
+            )
+            agent_results.append(
+                AgentResult(agent=agent_name, task_id=task_id, data=res)
+            )
+            current_input["itsm_results"] = res
+            audit_record(
+                "itsm_workflow_chat",
+                task_id=task_id,
+                mode=res.get("mode"),
+                ticket_id=(res.get("ticket") or {}).get("ticket_id"),
+            )
+            dur = trace.end("itsm", "ok", {"mode": res.get("mode")})
+            await send(
+                "agent_done",
+                {
+                    "agent": "itsm",
+                    "status": res.get("mode", "completed"),
+                    "duration_ms": dur,
+                },
+            )
+
         elif agent_name == "execution":
             trace.start("execution", "executing action")
             await send("agent_start", {"agent": "execution", "label": "Executing action"})
@@ -184,7 +219,7 @@ async def _run_agent_pipeline(
 
     # 4. Review — verify the draft against retrieved evidence before delivery
     review_result: Optional[Dict[str, Any]] = None
-    if settings.review_enabled and plan.get("intent") != "chitchat":
+    if settings.review_enabled and plan.get("intent") not in {"chitchat", "itsm"}:
         trace.start("review", "reviewing answer")
         await send("agent_start", {"agent": "review", "label": "Reviewing answer"})
         chunks_for_review: List[Dict[str, Any]] = []
@@ -245,6 +280,12 @@ async def _run_agent_pipeline(
     trace_dict = trace.to_dict()
     await trace.persist()
 
+    itsm_result = None
+    for r in agent_results:
+        if r.agent == "itsm":
+            itsm_result = r.data
+            break
+
     result = {
         "task_id": task_id,
         "session_id": session_id,
@@ -254,6 +295,7 @@ async def _run_agent_pipeline(
         "requires_approval": requires_approval or pending_action is not None,
         "pending_action": pending_action,
         "review": review_result,
+        "itsm": itsm_result,
         "trace": trace_dict,
         "status": "completed",
     }
@@ -304,6 +346,27 @@ async def _synthesize_final_response(
             analysis = data.get("analysis", "")
             if analysis:
                 parts.append("\n--- Analysis ---\n" + analysis)
+
+        elif agent == "itsm":
+            parts.append("\n" + data.get("message", "Service desk request processed."))
+            hints = data.get("hints") or []
+            if hints:
+                parts.append("\n**Suggested troubleshooting steps:**")
+                for hint in hints[:2]:
+                    src = hint.get("source", "IT documentation")
+                    parts.append(f"- {hint.get('text', '')} [source: {src}]")
+            ticket = data.get("ticket")
+            if ticket:
+                parts.append(
+                    f"\n**Ticket {ticket.get('ticket_id')}** · priority "
+                    f"{ticket.get('priority')} · status {ticket.get('status')} · "
+                    f"SLA {ticket.get('sla_due_at', 'N/A')}"
+                )
+            for t in data.get("tickets", [])[:5]:
+                parts.append(
+                    f"- {t.get('ticket_id')}: {t.get('title')} — "
+                    f"{t.get('status')} (priority {t.get('priority')})"
+                )
 
         elif agent == "execution":
             status = data.get("status", "unknown")

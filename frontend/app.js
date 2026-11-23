@@ -67,6 +67,7 @@ const AGENT_INFO = {
   execution: { label: 'Execution', desc: 'Calls allow-listed APIs and enterprise tools. Write operations pause for human approval.' },
   synthesis: { label: 'Compose', desc: 'Combines every agent result into one clear response.' },
   review: { label: 'Review', desc: 'Checks the draft answer against retrieved evidence and flags unsupported claims.' },
+  itsm: { label: 'Service Desk', desc: 'Classifies the IT issue, finds troubleshooting documentation and creates a tracked request.' },
 };
 
 /* ---------------------------------------------------------------- utils */
@@ -303,6 +304,53 @@ function heroNode() {
   return wrap;
 }
 
+function itsmCard(data) {
+  const card = document.createElement('div');
+  card.className = 'itsm-card';
+
+  const ticket = data.ticket;
+  const cls = data.classification || {};
+  if (ticket) {
+    const head = document.createElement('div');
+    head.className = 'itsm-head';
+    head.innerHTML = ICONS.shield + '<strong>' + escapeHtml(ticket.ticket_id) + '</strong>' +
+      '<span class="chip warn-chip">' + escapeHtml(ticket.priority) + '</span>';
+    card.appendChild(head);
+
+    const grid = document.createElement('div');
+    grid.className = 'itsm-grid';
+    grid.innerHTML =
+      '<span><b>Status</b> ' + escapeHtml(ticket.status) + '</span>' +
+      '<span><b>Category</b> ' + escapeHtml(ticket.category) + '</span>' +
+      '<span><b>Assigned</b> ' + escapeHtml(ticket.technician || 'Awaiting approval') + '</span>' +
+      '<span><b>SLA</b> ' + escapeHtml((ticket.sla_due_at || '').slice(0, 16).replace('T',' ')) + '</span>' +
+      (cls.issue_type ? '<span><b>Issue</b> ' + escapeHtml(cls.issue_type) + '</span>' : '');
+    card.appendChild(grid);
+  }
+
+  const list = data.tickets || [];
+  if (list.length) {
+    const ul = document.createElement('div');
+    ul.className = 'itsm-grid';
+    list.slice(0, 5).forEach((t) => {
+      const row = document.createElement('span');
+      row.innerHTML = '<b>' + escapeHtml(t.ticket_id) + '</b> ' + escapeHtml(t.status) +
+        ' · ' + escapeHtml(t.title || '');
+      ul.appendChild(row);
+    });
+    card.appendChild(ul);
+  }
+
+  const view = document.createElement('button');
+  view.type = 'button';
+  view.className = 'btn btn-ghost btn-sm';
+  view.textContent = 'Open service desk →';
+  view.addEventListener('click', openServiceDesk);
+  card.appendChild(view);
+
+  return card;
+}
+
 function approvalCard(m) {
   const card = document.createElement('div');
   card.className = 'approval-card';
@@ -439,6 +487,10 @@ function messageNode(m) {
       meta.className = 'meta-line';
       meta.innerHTML = m.meta;
       col.appendChild(meta);
+    }
+
+    if (m.itsm) {
+      col.appendChild(itsmCard(m.itsm));
     }
 
     if (m.pending && !m.pendingResolved) {
@@ -636,6 +688,7 @@ async function sendMessage(text) {
   let chunks = [];
   let plan = null;
   let review = null;
+  let itsm = null;
   let finished = false;
 
   const finish = (msg) => {
@@ -662,6 +715,9 @@ async function sendMessage(text) {
       if (msg.pending) {
         record.pending = msg.pending;
         record.taskId = msg.taskId;
+      }
+      if (msg.itsm) {
+        record.itsm = msg.itsm;
       }
     }
     s.messages.push(record);
@@ -735,11 +791,13 @@ async function sendMessage(text) {
           (payload.agent_results || []).forEach((r) => {
             if (r.agent === 'research' && r.data && Array.isArray(r.data.chunks)) chunks = r.data.chunks;
             if (r.agent === 'review') review = r.data;
+            if (r.agent === 'itsm') itsm = r.data;
           });
           finish({
             content: payload.final_response || 'No response was produced.',
             pending: payload.pending_action || null,
             taskId: payload.task_id,
+            itsm: payload.itsm || itsm,
           });
         } else if (event === 'error') {
           finished = true;
@@ -944,6 +1002,163 @@ function openApiKeyModal() {
   $('api-key-input').focus();
 }
 
+function openServiceDesk(tab) {
+  const node = document.createElement('div');
+  node.style.display = 'flex';
+  node.style.flexDirection = 'column';
+  node.style.gap = '14px';
+  node.innerHTML = '<div class="skeleton-line" style="width:50%"></div><div class="skeleton-line"></div><div class="skeleton-line" style="width:75%"></div>';
+  openModal('Service desk', node);
+  renderServiceDesk(node, tab || 'mine');
+}
+
+async function renderServiceDesk(node, tab) {
+  const tabs = [
+    ['mine', 'My requests'],
+    ['approvals', 'Approval queue'],
+    ['technician', 'Technician queue'],
+  ];
+  const bar = document.createElement('div');
+  bar.className = 'desk-tabs';
+  tabs.forEach(([key, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'desk-tab' + (key === tab ? ' active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => renderServiceDesk(node, key));
+    bar.appendChild(b);
+  });
+  node.innerHTML = '';
+  node.appendChild(bar);
+
+  const list = document.createElement('div');
+  list.className = 'desk-list';
+  list.innerHTML = '<div class="skeleton-line"></div><div class="skeleton-line" style="width:70%"></div>';
+  node.appendChild(list);
+
+  let endpoint = '/itsm/tickets?limit=50';
+  if (tab === 'approvals') endpoint = '/itsm/approvals';
+  if (tab === 'technician') endpoint = '/itsm/tickets?status=in_progress&limit=50';
+
+  try {
+    const r = await apiFetch(endpoint);
+    const data = await r.json();
+    list.innerHTML = '';
+    const tickets = data.tickets || [];
+    if (!tickets.length) {
+      const p = document.createElement('p');
+      p.className = 'empty-note';
+      p.textContent = tab === 'approvals'
+        ? 'No requests waiting for approval.'
+        : 'No tickets in this view yet.';
+      list.appendChild(p);
+    }
+    tickets.forEach((t) => list.appendChild(deskTicketRow(t, tab, () => renderServiceDesk(node, tab))));
+  } catch (e) {
+    list.innerHTML = '<p class="empty-note">Could not load tickets.</p>';
+  }
+}
+
+function deskTicketRow(t, tab, refresh) {
+  const row = document.createElement('div');
+  row.className = 'desk-ticket';
+  const statusCls = t.status === 'resolved' || t.status === 'closed' ? 'ok'
+    : t.status === 'rejected' ? 'bad' : '';
+  row.innerHTML =
+    '<div class="desk-ticket-main"><div class="doc-name">' +
+    '<span class="chip ' + (statusCls || 'accent') + '">' + escapeHtml(t.status) + '</span> ' +
+    escapeHtml(t.ticket_id) + '</div>' +
+    '<div class="doc-meta">' + escapeHtml(t.title || '') + ' · ' +
+    escapeHtml(t.category || '') + ' · priority ' + escapeHtml(t.priority || '') +
+    (t.technician ? ' · ' + escapeHtml(t.technician) : '') + '</div></div>';
+
+  const actions = document.createElement('div');
+  actions.className = 'approval-actions';
+
+  if (tab === 'approvals' && t.status === 'pending_approval') {
+    const approve = document.createElement('button');
+    approve.type = 'button';
+    approve.className = 'btn btn-primary btn-sm';
+    approve.textContent = 'Approve';
+    approve.addEventListener('click', async () => {
+      approve.disabled = true;
+      try {
+        const r = await apiFetch('/itsm/tickets/' + encodeURIComponent(t.ticket_id) + '/approve', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actor: 'admin', note: 'Approved from service desk' }),
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        toast('Approved · technician assigned');
+        refresh();
+      } catch (e) { toast('Approval failed: ' + e.message, true); approve.disabled = false; }
+    });
+    const reject = document.createElement('button');
+    reject.type = 'button';
+    reject.className = 'btn btn-danger btn-sm';
+    reject.textContent = 'Reject';
+    reject.addEventListener('click', async () => {
+      try {
+        const r = await apiFetch('/itsm/tickets/' + encodeURIComponent(t.ticket_id) + '/reject', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actor: 'admin' }),
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        toast('Request rejected'); refresh();
+      } catch (e) { toast('Reject failed: ' + e.message, true); }
+    });
+    actions.appendChild(approve);
+    actions.appendChild(reject);
+  } else if (tab === 'technician' && (t.status === 'assigned' || t.status === 'in_progress')) {
+    const start = document.createElement('button');
+    start.type = 'button';
+    start.className = 'btn btn-ghost btn-sm';
+    start.textContent = 'Start work';
+    start.addEventListener('click', async () => {
+      await apiFetch('/itsm/tickets/' + encodeURIComponent(t.ticket_id), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'in_progress', actor: 'technician' }),
+      });
+      toast('Ticket in progress'); refresh();
+    });
+    const resolve = document.createElement('button');
+    resolve.type = 'button';
+    resolve.className = 'btn btn-primary btn-sm';
+    resolve.textContent = 'Resolve';
+    resolve.addEventListener('click', async () => {
+      await apiFetch('/itsm/tickets/' + encodeURIComponent(t.ticket_id), {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved', actor: 'technician', resolution: 'Resolved from service desk' }),
+      });
+      toast('Ticket resolved'); refresh();
+    });
+    actions.appendChild(start);
+    actions.appendChild(resolve);
+  }
+
+  const track = document.createElement('button');
+  track.type = 'button';
+  track.className = 'btn btn-ghost btn-sm';
+  track.textContent = 'Track';
+  track.addEventListener('click', async () => {
+    const r = await apiFetch('/itsm/tickets/' + encodeURIComponent(t.ticket_id) + '/history');
+    const d = await r.json();
+    const box = document.createElement('div');
+    box.className = 'desk-history';
+    (d.history || []).forEach((h) => {
+      const line = document.createElement('div');
+      line.className = 'doc-meta';
+      line.textContent = h.created_at + ' · ' + (h.from_status || 'new') + ' → ' + h.to_status +
+        ' · ' + h.actor + (h.note ? ' · ' + h.note : '');
+      box.appendChild(line);
+    });
+    openModal('Ticket history · ' + t.ticket_id, box);
+  });
+  actions.appendChild(track);
+
+  row.appendChild(actions);
+  return row;
+}
+
 function openAgents() {
   const node = document.createElement('div');
   node.style.display = 'flex';
@@ -1076,6 +1291,7 @@ function bindEvents() {
 
   $('open-kb').addEventListener('click', () => { closeSidebar(); openKnowledgeBase(); });
   $('open-agents').addEventListener('click', () => { closeSidebar(); openAgents(); });
+  $('open-desk').addEventListener('click', () => { closeSidebar(); openServiceDesk(); });
   $('open-key').addEventListener('click', openApiKeyModal);
   $('theme-toggle').addEventListener('click', () => {
     const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';

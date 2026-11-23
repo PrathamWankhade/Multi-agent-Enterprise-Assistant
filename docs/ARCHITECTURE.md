@@ -47,6 +47,9 @@ flowchart TB
     ROUTES --> ORCH
     ROUTES --> SSE
     ORCH --> RES & ANA & EXE
+    ORCH --> CLS[Classifier]
+    CLS --> ITSM[ITSM workflow]
+    ITSM --> DB2[(PostgreSQL-ready<br/>SQLite)]
     RES & ANA & EXE --> SYN --> REV
     RES & ANA & EXE & SYN & REV --> LLM
     ORCH --> MEM
@@ -173,6 +176,26 @@ Switching providers is configuration-only — no agent code changes. Placeholder
 **Azure (optional):** Container Apps (app) + Azure AI Search + Redis Cache + Key Vault + Log Analytics, provisioned by [`azure/main.bicep`](../azure/main.bicep) via `azd`. Managed identity grants RBAC to OpenAI and Search.
 
 See [Azure deployment guide](../AZURE_DEPLOYMENT.md) for details.
+
+---
+
+## 8. ITSM service desk
+
+The `itsm` intent runs a dedicated workflow instead of the RAG/analysis pipeline:
+
+```text
+Classification Agent (category, priority, department)
+        ↓
+RAG troubleshooting hints (IT documentation)
+        ↓
+Service request created (pending_approval, SLA)
+        ↓
+Admin approval queue → priority override → skill-based technician assignment
+        ↓
+Status history + employee tracking
+```
+
+The Review Agent is intentionally skipped for ITSM intents — ticket creation is deterministic and a groundedness rewrite could hallucinate a different ticket ID. See [ITSM guide](ITSM.md).
 
 ---
 

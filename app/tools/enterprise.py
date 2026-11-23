@@ -313,6 +313,105 @@ def _tool_generate_report(
 
 
 # ---------------------------------------------------------------------------
+# ITSM workflow tool handlers (Phase 7)
+# ---------------------------------------------------------------------------
+
+def _tool_create_service_request(
+    title: str,
+    description: str,
+    requester: str,
+    category: str = "other",
+    issue_type: str = "",
+    priority: str = "medium",
+    department: str = "",
+) -> Dict[str, Any]:
+    """Create an ITSM service request — starts in the admin approval queue."""
+    from app.database.itsm import create_ticket
+
+    ticket = create_ticket(
+        title=title,
+        description=description,
+        category=category,
+        requester=requester,
+        issue_type=issue_type,
+        suggested_priority=priority,
+        requester_department=department,
+        confidence=0.8,
+        classification_reasoning="Created through the ITSM workflow.",
+    )
+    return {
+        "ticket_id": ticket.get("ticket_id"),
+        "status": ticket.get("status"),
+        "priority": ticket.get("priority"),
+        "sla_due_at": ticket.get("sla_due_at"),
+        "message": (
+            f"Service request {ticket.get('ticket_id')} created and sent to the "
+            "IT administration approval queue."
+        ),
+        "note": f"Pending admin approval · SLA due {ticket.get('sla_due_at')}",
+    }
+
+
+def _tool_track_ticket(ticket_id: str = "", requester: str = "") -> Dict[str, Any]:
+    """Track service requests by ID or requester."""
+    from app.database.itsm import get_history, get_ticket, list_tickets
+
+    if ticket_id:
+        ticket = get_ticket(ticket_id)
+        if not ticket:
+            return {"error": f"Ticket {ticket_id} not found", "ticket_id": ticket_id}
+        return {
+            "ticket_id": ticket_id,
+            "status": ticket.get("status"),
+            "priority": ticket.get("priority"),
+            "technician": ticket.get("technician"),
+            "resolution": ticket.get("resolution"),
+            "sla_due_at": ticket.get("sla_due_at"),
+            "history": get_history(ticket_id),
+        }
+    tickets = list_tickets(requester=requester or None, limit=20)
+    return {
+        "count": len(tickets),
+        "tickets": [
+            {
+                "ticket_id": t["ticket_id"],
+                "title": t["title"],
+                "status": t["status"],
+                "priority": t["priority"],
+                "technician": t.get("technician"),
+            }
+            for t in tickets
+        ],
+    }
+
+
+def _tool_list_service_requests(
+    status: str = "all",
+    category: str = "",
+    limit: int = 50,
+) -> Dict[str, Any]:
+    """List service requests (admin/technician visibility controlled by API)."""
+    from app.database.itsm import list_tickets
+
+    tickets = list_tickets(status=status, category=category or None, limit=limit)
+    return {
+        "count": len(tickets),
+        "tickets": [
+            {
+                "ticket_id": t["ticket_id"],
+                "title": t["title"],
+                "category": t["category"],
+                "priority": t["priority"],
+                "status": t["status"],
+                "requester": t["requester"],
+                "technician": t.get("technician"),
+            }
+            for t in tickets
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
@@ -391,6 +490,58 @@ def register_tools() -> None:
                               enum=["csv"]),
             ],
             handler=_tool_generate_report,
+        )
+    )
+
+    # --- ITSM workflow tools (own approval lifecycle, no generic gate) ---
+    registry.register(
+        ToolSpec(
+            name="create_service_request",
+            description="Create an IT service request/ticket. The ticket enters the administrator "
+                        "approval queue; an admin must approve it before a technician is assigned.",
+            risk="workflow",
+            parameters=[
+                ToolParameter("title", "string", "Short summary of the issue."),
+                ToolParameter("description", "string", "Full description of the problem."),
+                ToolParameter("requester", "string", "Name of the employee reporting the issue."),
+                ToolParameter("category", "string", "Issue category.", required=False, default="other",
+                              enum=["hardware", "software", "network", "access", "other"]),
+                ToolParameter("issue_type", "string", "Specific issue label.", required=False, default=""),
+                ToolParameter("priority", "string", "Suggested priority (admin may change it).",
+                              required=False, default="medium",
+                              enum=["critical", "high", "medium", "low"]),
+                ToolParameter("department", "string", "Requester department.", required=False, default=""),
+            ],
+            handler=_tool_create_service_request,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="track_ticket",
+            description="Track a service request by ticket ID, or list requests for a requester.",
+            risk="read",
+            parameters=[
+                ToolParameter("ticket_id", "string", "Ticket ID, e.g. SR-00001.", required=False, default=""),
+                ToolParameter("requester", "string", "Employee name to list tickets for.",
+                              required=False, default=""),
+            ],
+            handler=_tool_track_ticket,
+        )
+    )
+    registry.register(
+        ToolSpec(
+            name="list_service_requests",
+            description="List service requests with optional status/category filters.",
+            risk="read",
+            parameters=[
+                ToolParameter("status", "string", "Filter by lifecycle status.",
+                              required=False, default="all",
+                              enum=["all", "pending_approval", "approved", "assigned",
+                                    "in_progress", "resolved", "closed", "rejected"]),
+                ToolParameter("category", "string", "Filter by category.", required=False, default=""),
+                ToolParameter("limit", "integer", "Maximum results.", required=False, default=50),
+            ],
+            handler=_tool_list_service_requests,
         )
     )
     logger.info("Registered %d enterprise tools", len(registry.list()))

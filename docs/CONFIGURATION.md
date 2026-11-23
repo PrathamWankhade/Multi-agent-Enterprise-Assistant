@@ -63,8 +63,9 @@ If Redis is unreachable, a shared in-process store is used. The connection is pr
 | `TOOLS_ENABLED` | `true` | Enable the enterprise tool framework |
 | `EXECUTION_REQUIRE_APPROVAL` | `true` | Require approval for write actions |
 | `ALLOWED_EXECUTION_DOMAINS` | – | Comma-separated domains for direct HTTP calls |
-| `SQLITE_PATH` | `data/enterprise.db` | Mock ERP database |
+| `SQLITE_PATH` | `data/enterprise.db` | Mock ERP + ITSM database |
 | `REPORTS_DIR` | `reports` | CSV report output directory |
+| `ITSM_SLA_HOURS` | `critical:2,high:8,medium:24,low:72` | SLA deadlines by priority |
 
 ---
 

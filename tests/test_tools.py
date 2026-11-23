@@ -18,10 +18,11 @@ def invoke(name, args):
     return asyncio.run(get_registry().invoke(name, args))
 
 
-def test_registry_has_five_tools():
+def test_registry_has_enterprise_tools():
     names = [t.name for t in get_registry().list()]
-    assert len(names) == 5
+    assert len(names) == 8
     assert "create_ticket" in names
+    assert "create_service_request" in names
 
 
 def test_lookup_employee():

@@ -38,6 +38,7 @@ class ChatResponse(BaseModel):
     status: str = "completed"
     pending_action: Optional[Dict[str, Any]] = None
     review: Optional[Dict[str, Any]] = None
+    itsm: Optional[Dict[str, Any]] = None
     trace: Optional[Dict[str, Any]] = None
 
 
@@ -75,3 +76,24 @@ class HealthResponse(BaseModel):
     llm_provider: str
     vector_store: str
     memory_backend: str
+
+
+class ServiceRequestCreate(BaseModel):
+    message: str = Field(..., description="Employee's issue description")
+    requester: str = Field(default="employee", description="Employee name")
+    department: str = Field(default="", description="Employee department")
+    title: Optional[str] = Field(default=None, description="Optional explicit title")
+
+
+class TicketDecision(BaseModel):
+    priority: Optional[str] = Field(default=None, description="Admin priority override")
+    technician: Optional[str] = Field(default=None, description="Specific technician to assign")
+    note: Optional[str] = Field(default=None, description="Decision note")
+    actor: str = Field(default="admin", description="Actor name")
+
+
+class TicketUpdate(BaseModel):
+    status: str = Field(..., description="Target lifecycle status")
+    resolution: Optional[str] = Field(default=None)
+    note: Optional[str] = Field(default=None)
+    actor: str = Field(default="technician")

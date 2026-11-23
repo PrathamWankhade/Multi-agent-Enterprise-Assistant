@@ -470,6 +470,36 @@ button, textarea, input { font-family: inherit; font-size: inherit; color: inher
 .approval-done.ok { background: rgba(16, 185, 129, .1); color: var(--ok); border-color: rgba(16, 185, 129, .4); }
 .approval-done.bad { background: rgba(239, 68, 68, .08); color: var(--danger); border-color: rgba(239, 68, 68, .35); }
 
+/* ---------------- ITSM ---------------- */
+
+.itsm-card {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface-2); padding: var(--sp-3) var(--sp-4);
+  display: flex; flex-direction: column; gap: 9px; max-width: 520px;
+}
+.itsm-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.itsm-head svg { color: var(--accent); }
+.itsm-grid { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-2); }
+.itsm-grid b { color: var(--text); font-weight: 600; margin-right: 3px; }
+
+.desk-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+.desk-tab {
+  background: none; border: 0; border-bottom: 2px solid transparent;
+  padding: 8px 12px; font-size: 13px; color: var(--text-3); cursor: pointer;
+}
+.desk-tab:hover { color: var(--text); }
+.desk-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 620; }
+.desk-list { display: flex; flex-direction: column; gap: 10px; }
+.desk-ticket {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: 12px 14px; border: 1px solid var(--border);
+  border-radius: var(--r-md); background: var(--surface-2);
+}
+.desk-ticket-main { min-width: 0; }
+.desk-ticket .approval-actions { flex-wrap: wrap; justify-content: flex-end; flex: none; }
+.desk-history { display: flex; flex-direction: column; gap: 6px; }
+.desk-history .doc-meta { padding: 6px 0; border-bottom: 1px solid var(--border); }
+
 /* ---------------- Composer ---------------- */
 
 .composer-wrap {

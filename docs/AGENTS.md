@@ -1,6 +1,6 @@
 # Agent Reference
 
-Six agents cooperate on every request. All agents inherit `BaseAgent`, which provides LLM access, memory access, and a shared message-building helper. They use **one** configured LLM — distinct behavior comes from prompts, inputs and permissions.
+Seven specialized agents cooperate on requests. All agents inherit `BaseAgent`, which provides LLM access, memory access, and a shared message-building helper. They use **one** configured LLM — distinct behavior comes from prompts, inputs and permissions.
 
 ---
 
@@ -14,9 +14,21 @@ Six agents cooperate on every request. All agents inherit `BaseAgent`, which pro
   - `research` — general facts, policy questions (`agents: ["research"]`)
   - `analysis` — compare / recommend (`agents: ["research", "analyst"]`)
   - `execution` — tickets, lookups, SQL, reports (`agents: ["research", "execution"]` when docs are relevant)
+  - `itsm` — IT problem reports and ticket tracking (`agents: ["itsm"]`, forced even if the LLM emits a different list)
   - `chitchat` — greetings (`agents: []`)
 - **Fast path:** obvious greetings bypass the LLM entirely (instant response).
 - Falls back to a safe `research` plan if the model returns non-JSON.
+
+---
+
+## Classification (`app/agents/classifier.py`) — *the IT triage specialist*
+
+**Responsibility:** turn a free-text IT problem into structured ITSM fields.
+
+- Proposes `category`, `issue_type`, `suggested_priority`, `confidence` and `reasoning` as JSON.
+- Keyword heuristic fallback covers hardware/network/access/software and criticality terms.
+- Always sets `approval_required: true` — the administrator makes the final decision.
+- Used by both the ITSM chat workflow and `POST /itsm/requests`.
 
 ---
 

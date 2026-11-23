@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
+from app.api.itsm_routes import router as itsm_router
 from app.config import get_settings
 
 
@@ -66,6 +67,12 @@ async def _seed_knowledge_base() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _register_tools()
+    try:
+        from app.database.itsm import ensure_itsm_schema
+
+        ensure_itsm_schema()
+    except Exception as exc:  # pragma: no cover - best effort
+        logger.warning("ITSM schema setup skipped: %s", exc)
     await _seed_knowledge_base()
     yield
 
@@ -96,6 +103,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api/v1")
+app.include_router(itsm_router, prefix="/api/v1")
 
 # Serve frontend
 frontend_dir = Path(__file__).parent.parent / "frontend"

@@ -49,6 +49,8 @@ class ToolSpec:
 
     @property
     def requires_approval(self) -> bool:
+        # `workflow` tools manage their own approval lifecycle (e.g. ITSM
+        # tickets start in pending_approval), so they skip the generic gate.
         return self.risk in {"write", "external"}
 
     def to_openai_schema(self) -> Dict[str, Any]:

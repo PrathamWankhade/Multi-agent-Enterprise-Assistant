@@ -2,16 +2,16 @@
 
 # Multi-Agent Enterprise Assistant
 
-**A locally powered, cloud-connected agentic AI platform for enterprise knowledge, automation, and governance.**
+**An AI-Powered Enterprise Knowledge & IT Service Management (ITSM) platform — local-first, cloud-connected, human-governed.**
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)](tests/)
 [![License](https://img.shields.io/badge/license-Internal%20use-blue)]()
 [![Ollama](https://img.shields.io/badge/LLM-Ollama%20%7C%20Azure%20OpenAI-orange)](https://ollama.com/)
 [![Qdrant](https://img.shields.io/badge/Vector-Qdrant%20%7C%20Azure%20AI%20Search-red)](https://qdrant.tech/)
 
-[Features](#-features) · [Architecture](#-architecture) · [Quick Start](#-quick-start) · [Documentation](#-documentation) · [API](#-api-reference) · [Deployment](#-deployment)
+[Features](#-features) · [ITSM workflow](#-itsm-service-desk) · [Architecture](#-architecture) · [Quick Start](#-quick-start) · [Documentation](#-documentation) · [API](#-api-reference)
 
 </div>
 
@@ -24,6 +24,7 @@
 | Capability | What it demonstrates |
 |---|---|
 | 🧠 **6 specialized agents** | Orchestrator, Research, Analyst, Execution, Review, and Synthesis — each with a real, distinct responsibility |
+| 🎫 **ITSM service desk** | Report problems in natural language → AI classification → admin approval → technician assignment → resolution → tracking |
 | 🔍 **RAG with citations** | Vector search over company documents; every claim traces back to a clickable source excerpt |
 | 🛠️ **Enterprise tools** | HR directory, IT tickets, read-only SQL, CSV reports — schema-validated and risk-classified |
 | ✋ **Human approval gate** | Write actions pause until a human approves — nothing executes silently |
@@ -32,6 +33,43 @@
 | 💾 **Stateful memory** | Redis-backed conversations and task context with in-process fallback |
 | ☁️ **Cloud-ready** | Azure OpenAI, Azure AI Search, managed identity, Bicep + azd templates |
 | 🎨 **Professional UI** | Streaming pipeline, approvals, sources drawer, KB manager, light/dark themes |
+
+---
+
+## 🎫 ITSM service desk
+
+The platform combines **company knowledge** with a complete **IT service management** workflow:
+
+```mermaid
+sequenceDiagram
+    participant E as Employee
+    participant A as Assistant
+    participant C as Classifier
+    participant KB as IT documentation
+    participant ADM as Administrator
+    participant TECH as Technician
+
+    E->>A: "My laptop won't boot, urgent presentation tomorrow"
+    A->>C: classify issue
+    C-->>A: hardware · high priority · boot failure
+    A->>KB: troubleshooting steps
+    KB-->>A: approved steps + citations
+    A->>A: create service request (pending_approval, SLA)
+    A-->>E: ticket ID + suggested steps
+    A-->>ADM: approval queue
+    ADM->>A: approve (may change priority)
+    A->>TECH: skill-based assignment
+    TECH->>A: in_progress → resolved
+    E->>A: track ticket + history
+```
+
+- **AI recommends, humans decide** — admins override priority and approve/reject.
+- **Configurable SLAs** — `ITSM_SLA_HOURS=critical:2,high:8,medium:24,low:72`.
+- **Full status history** with actor, role and timestamps.
+- **Role-aware UI** — Service desk panel with My requests / Approval queue / Technician queue.
+- **Audit trail** for every ITSM write operation.
+
+📖 Full details: [docs/ITSM.md](docs/ITSM.md)
 
 ---
 
@@ -153,7 +191,9 @@ The stack includes Qdrant + Redis with healthchecks and persistent volumes. Olla
 | 📐 [Architecture](docs/ARCHITECTURE.md) | System design, data flow, diagrams, deployment topology |
 | 🤖 [Agent Reference](docs/AGENTS.md) | Deep dive into each agent, prompts and decisions |
 | 🔌 [API Reference](docs/API.md) | Every endpoint with request/response examples |
+| 🎫 [ITSM Service Desk](docs/ITSM.md) | Ticket lifecycle, classification, approvals, SLAs |
 | 🧰 [Tools & Approvals](docs/TOOLS.md) | Tool registry, risk levels, approval workflow |
+| 🎫 [ITSM Service Desk](docs/ITSM.md) | Ticket lifecycle, classification, approvals, assignment, SLAs |
 | 🔧 [Configuration](docs/CONFIGURATION.md) | All environment variables and provider modes |
 | 🆘 [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
 | 🧪 [Testing & Development](docs/DEVELOPMENT.md) | Test suite, extending agents/tools |
@@ -176,6 +216,11 @@ All guides are on **GitHub**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [doc
 | `/api/v1/tasks/{id}/approve` | POST | Approve and run a pending write action |
 | `/api/v1/tasks/{id}/reject` | POST | Reject a pending action |
 | `/api/v1/tasks/{id}/trace` | GET | Agent timings and outcomes |
+| `/api/v1/itsm/requests` | POST | Classify issue + create service request |
+| `/api/v1/itsm/tickets` | GET | List/filter service tickets |
+| `/api/v1/itsm/tickets/{id}` | GET / PATCH | Track ticket / update status |
+| `/api/v1/itsm/approvals` | GET | Admin approval queue |
+| `/api/v1/itsm/tickets/{id}/approve` | POST | Admin approval + technician assignment |
 | `/api/v1/audit` | GET | Recent security-relevant events |
 | `/api/v1/sessions/{id}` | GET / DELETE | Conversation history |
 | `/api/v1/health` | GET | Provider/backend status |
@@ -207,7 +252,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/tasks/{task_id}/approve
 
 ```bash
 python -m pytest tests/ -q
-# 41 passed in ~18s — 100% offline, no Azure/Ollama/Qdrant/Redis needed
+# 52 passed in ~20s — 100% offline, no Azure/Ollama/Qdrant/Redis needed
 ```
 
 The suite forces mock mode via `tests/conftest.py` and covers the API, tools, approvals, review logic, RBAC, and Azure backends (mocked REST).
@@ -231,10 +276,10 @@ Multi-agent-Enterprise-Assistant/
 │   └── tools/           # Tool registry + enterprise tools
 ├── azure/               # Bicep infrastructure
 ├── data/                # Sample knowledge documents + seed DB
-├── docs/                # 📚 Full documentation
-├── frontend/            # Single-page UI + in-app documentation page
+├── docs/                # 📚 Full documentation (incl. ITSM guide)
+├── frontend/            # Single-page UI + service desk panel
 ├── scripts/             # KB seeding utilities
-├── tests/               # 41 offline tests
+├── tests/               # 52 offline tests
 ├── docker-compose.yml   # App + Qdrant + Redis
 ├── Dockerfile
 └── AZURE_DEPLOYMENT.md
@@ -267,7 +312,8 @@ Indexed data is never destroyed automatically: a dimension mismatch on a **popul
 | 4 · Tools + human approval | ✅ Complete |
 | 5 · Auth, audit, tracing, tests, Docker | ✅ Complete |
 | 6 · Azure integration | ✅ Complete |
-| Next · Demo video, architecture diagram, performance report | 📋 Planned |
+| 7 · ITSM ticket lifecycle | ✅ Complete |
+| Next · PostgreSQL, JWT, LangGraph, dashboards, notifications | 📋 Planned |
 
 ---
 

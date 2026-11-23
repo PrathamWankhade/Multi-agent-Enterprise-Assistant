@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     sqlite_path: str = Field(default="data/enterprise.db")
     reports_dir: str = Field(default="reports")
 
+    # --- ITSM (Phase 7) ---
+    # SLA deadlines in hours per suggested priority, e.g. "critical:2,high:8,medium:24,low:72"
+    itsm_sla_hours: str = Field(
+        default="critical:2,high:8,medium:24,low:72"
+    )
+
     # --- Security (Phase 5) ---
     # Auth is OFF by default so the app works out of the box. When enabled,
     # API_KEYS maps keys to roles: "key1:admin,key2:user,key3:viewer".

@@ -160,6 +160,56 @@ Raw tail of today's audit log file.
 
 ---
 
+## ITSM service desk
+
+### `POST /itsm/requests` · role: user
+
+Classify an issue, find troubleshooting hints in IT documentation, and create a service request.
+
+```json
+{ "message": "VPN keeps disconnecting", "requester": "Ava Patel", "department": "Engineering" }
+```
+
+Returns `ticket` (status `pending_approval`), `classification`, `troubleshooting_hints`.
+
+### `GET /itsm/tickets` · role: viewer
+
+Query params: `status`, `category`, `requester`, `limit`.
+
+### `GET /itsm/tickets/{id}` · role: viewer
+
+Returns `{ ticket, history }` — full status history with actors and notes.
+
+### `GET /itsm/approvals` · role: admin
+
+Pending approval queue.
+
+### `POST /itsm/tickets/{id}/approve` · role: admin
+
+```json
+{ "actor": "admin", "priority": "critical", "technician": "Noah Kim", "note": "Approved" }
+```
+
+Priority override and technician are optional; otherwise the system auto-assigns by skill.
+
+### `POST /itsm/tickets/{id}/reject` · role: admin
+
+```json
+{ "actor": "admin", "note": "Duplicate request" }
+```
+
+### `PATCH /itsm/tickets/{id}` · role: user
+
+```json
+{ "status": "in_progress", "actor": "Noah Kim", "note": "Investigating" }
+```
+
+Status must be a valid lifecycle transition (`409` otherwise). Include `resolution` when resolving.
+
+### `GET /itsm/technicians?skill=hardware` · role: viewer
+
+---
+
 ## Health
 
 ### `GET /health` · public
