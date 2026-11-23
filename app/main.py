@@ -101,6 +101,23 @@ app.include_router(router, prefix="/api/v1")
 frontend_dir = Path(__file__).parent.parent / "frontend"
 app.mount("/static", NoCacheStaticFiles(directory=str(frontend_dir)), name="static")
 
+# Markdown sources for the in-app docs viewer (kept separate from /docs Swagger).
+docs_dir = Path(__file__).parent.parent / "docs"
+app.mount("/docs-md", NoCacheStaticFiles(directory=str(docs_dir)), name="docs-md")
+
+
+@app.get("/readme.md", tags=["root"], include_in_schema=False)
+async def root_readme():
+    """Root README, used by the in-app documentation viewer."""
+    return FileResponse(
+        str(Path(__file__).parent.parent / "README.md"), media_type="text/markdown"
+    )
+
+
+@app.get("/documentation", tags=["root"], include_in_schema=False)
+async def documentation_page():
+    return FileResponse(str(frontend_dir / "docs.html"))
+
 
 @app.get("/", tags=["root"])
 async def root():
