@@ -19,6 +19,7 @@ python -m pytest tests/ -q
 | `test_auth.py` | Roles, 401/403, Bearer tokens, auth audit events |
 | `test_azure.py` | Provider detection, managed identity, mocked Search index/upload/search/delete |
 | `test_itsm.py` | Classification, ticket lifecycle, approvals, technician updates, tracking, RBAC |
+| `test_auth_jwt.py` | JWT login/refresh, user/admin roles, admin task and priority assignment, per-user rules |
 
 **Writing tests:** use the session-scoped `client` fixture for HTTP calls, and `fresh_settings(**kwargs)` to temporarily change configuration for one test.
 

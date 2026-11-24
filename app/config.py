@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     review_enabled: bool = Field(default=True)
     review_llm_enabled: bool = Field(default=True)
 
+    # --- Database ---
+    # Free default: local SQLite file. Set a PostgreSQL URL to switch (needs
+    # requirements-postgres.txt). SQLite stays the fallback if psycopg is absent.
+    database_url: str = Field(default="")
+
     # --- Tool framework (Phase 4) ---
     tools_enabled: bool = Field(default=True)
     sqlite_path: str = Field(default="data/enterprise.db")

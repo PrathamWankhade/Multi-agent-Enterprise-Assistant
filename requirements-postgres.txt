@@ -1,0 +1,7 @@
+# Optional PostgreSQL support (free-first SQLite remains the default).
+#
+#   pip install -r requirements-postgres.txt
+#   # then set DATABASE_URL=postgresql://user:pass@host:5432/dbname in .env
+#
+-r requirements.txt
+psycopg[binary]>=3.1.0

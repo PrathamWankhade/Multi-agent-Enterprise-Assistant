@@ -50,6 +50,7 @@ async def _run_agent_pipeline(
     message: str,
     auto_approve: bool,
     emit: Optional[EmitFn] = None,
+    actor=None,
 ) -> Dict[str, Any]:
     """Run the full multi-agent delegation pipeline.
 
@@ -149,6 +150,7 @@ async def _run_agent_pipeline(
                 message=message,
                 session_id=session_id,
                 task_id=task_id,
+                requester=(actor.username if actor else "employee"),
             )
             agent_results.append(
                 AgentResult(agent=agent_name, task_id=task_id, data=res)
@@ -428,7 +430,7 @@ async def _synthesize_final_response(
 # ---------------------------------------------------------------------------
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, _role=require_user):
+async def chat(request: ChatRequest, actor=require_user):
     """Main chat endpoint: orchestrates agents and returns a response."""
     session_id = request.session_id or MemoryStore.generate_id()
     task_id = MemoryStore.generate_id()
@@ -446,6 +448,7 @@ async def chat(request: ChatRequest, _role=require_user):
             session_id=session_id,
             message=request.message,
             auto_approve=request.auto_approve,
+            actor=actor,
         )
         return ChatResponse(**result)
     except Exception as exc:
@@ -454,7 +457,7 @@ async def chat(request: ChatRequest, _role=require_user):
 
 
 @router.post("/chat/stream", tags=["chat"])
-async def chat_stream(request: ChatRequest, _role=require_user):
+async def chat_stream(request: ChatRequest, actor=require_user):
     """Server-sent events version of /chat.
 
     Emits `agent_start`, `plan`, `agent_done` and `final` events so the UI can
@@ -482,6 +485,7 @@ async def chat_stream(request: ChatRequest, _role=require_user):
                 message=request.message,
                 auto_approve=request.auto_approve,
                 emit=emit,
+                actor=actor,
             )
         except Exception as exc:  # pragma: no cover
             logger.exception("Streaming chat pipeline failed")
@@ -530,7 +534,7 @@ async def kb_documents(_role=require_viewer):
 @router.delete("/kb/documents/{doc_id}", tags=["knowledge-base"])
 async def kb_delete_document(doc_id: str, role=require_admin):
     """Remove a document (and all its chunks) from the knowledge base."""
-    audit_record("kb_document_deleted", doc_id=doc_id, role=role.name if role else None)
+    audit_record("kb_document_deleted", doc_id=doc_id, role=role.role if role else None)
     store = get_vector_store()
     await store.initialize()
     if not store.available:
@@ -640,7 +644,7 @@ async def approve_task(task_id: str, role=require_admin):
             task_id=task_id,
             tool=pending_tool.get("tool"),
             risk=pending_tool.get("risk"),
-            role=role.name if role else None,
+            role=role.role if role else None,
         )
         outcome = await registry.invoke(
             pending_tool.get("tool", ""), pending_tool.get("args") or {}

@@ -28,7 +28,7 @@
 | 🔍 **RAG with citations** | Vector search over company documents; every claim traces back to a clickable source excerpt |
 | 🛠️ **Enterprise tools** | HR directory, IT tickets, read-only SQL, CSV reports — schema-validated and risk-classified |
 | ✋ **Human approval gate** | Write actions pause until a human approves — nothing executes silently |
-| 🔐 **Security & governance** | Optional API-key auth with RBAC, structured audit trail, document-level control |
+| 🔐 **Security & governance** | JWT auth + user/admin roles, API keys, RBAC, structured audit trail |
 | 📊 **Execution tracing** | Per-agent timings and outcomes, streamed live to the UI |
 | 💾 **Stateful memory** | Redis-backed conversations and task context with in-process fallback |
 | ☁️ **Cloud-ready** | Azure OpenAI, Azure AI Search, managed identity, Bicep + azd templates |
@@ -64,6 +64,7 @@ sequenceDiagram
 ```
 
 - **AI recommends, humans decide** — admins override priority and approve/reject.
+- **JWT user/admin roles** — admins assign tasks and priorities per requesting user.
 - **Configurable SLAs** — `ITSM_SLA_HOURS=critical:2,high:8,medium:24,low:72`.
 - **Full status history** with actor, role and timestamps.
 - **Role-aware UI** — Service desk panel with My requests / Approval queue / Technician queue.
@@ -191,6 +192,7 @@ The stack includes Qdrant + Redis with healthchecks and persistent volumes. Olla
 | 📐 [Architecture](docs/ARCHITECTURE.md) | System design, data flow, diagrams, deployment topology |
 | 🤖 [Agent Reference](docs/AGENTS.md) | Deep dive into each agent, prompts and decisions |
 | 🔌 [API Reference](docs/API.md) | Every endpoint with request/response examples |
+| 🔑 [Auth & Admin Assignment](docs/AUTH.md) | JWT login, user/admin roles, per-user task and priority assignment |
 | 🎫 [ITSM Service Desk](docs/ITSM.md) | Ticket lifecycle, classification, approvals, SLAs |
 | 🧰 [Tools & Approvals](docs/TOOLS.md) | Tool registry, risk levels, approval workflow |
 | 🎫 [ITSM Service Desk](docs/ITSM.md) | Ticket lifecycle, classification, approvals, assignment, SLAs |
@@ -216,11 +218,16 @@ All guides are on **GitHub**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [doc
 | `/api/v1/tasks/{id}/approve` | POST | Approve and run a pending write action |
 | `/api/v1/tasks/{id}/reject` | POST | Reject a pending action |
 | `/api/v1/tasks/{id}/trace` | GET | Agent timings and outcomes |
+| `/api/v1/auth/login` | POST | Username/password → JWT access + refresh tokens |
+| `/api/v1/auth/me` | GET | Current authenticated user |
 | `/api/v1/itsm/requests` | POST | Classify issue + create service request |
 | `/api/v1/itsm/tickets` | GET | List/filter service tickets |
 | `/api/v1/itsm/tickets/{id}` | GET / PATCH | Track ticket / update status |
 | `/api/v1/itsm/approvals` | GET | Admin approval queue |
 | `/api/v1/itsm/tickets/{id}/approve` | POST | Admin approval + technician assignment |
+| `/api/v1/admin/tickets` | GET | All tickets with requester identity |
+| `/api/v1/admin/tickets/{id}/assign` | POST | Admin sets priority + technician for a user |
+| `/api/v1/admin/rules` | GET / POST | Per-user / per-department routing rules |
 | `/api/v1/audit` | GET | Recent security-relevant events |
 | `/api/v1/sessions/{id}` | GET / DELETE | Conversation history |
 | `/api/v1/health` | GET | Provider/backend status |
@@ -252,7 +259,7 @@ curl -X POST http://127.0.0.1:8000/api/v1/tasks/{task_id}/approve
 
 ```bash
 python -m pytest tests/ -q
-# 52 passed in ~20s — 100% offline, no Azure/Ollama/Qdrant/Redis needed
+# 62 passed in ~23s — 100% offline, no Azure/Ollama/Qdrant/Redis needed
 ```
 
 The suite forces mock mode via `tests/conftest.py` and covers the API, tools, approvals, review logic, RBAC, and Azure backends (mocked REST).
@@ -279,7 +286,8 @@ Multi-agent-Enterprise-Assistant/
 ├── docs/                # 📚 Full documentation (incl. ITSM guide)
 ├── frontend/            # Single-page UI + service desk panel
 ├── scripts/             # KB seeding utilities
-├── tests/               # 52 offline tests
+├── tests/               # 62 offline tests
+├── requirements-postgres.txt  # Optional PostgreSQL driver
 ├── docker-compose.yml   # App + Qdrant + Redis
 ├── Dockerfile
 └── AZURE_DEPLOYMENT.md
@@ -313,7 +321,8 @@ Indexed data is never destroyed automatically: a dimension mismatch on a **popul
 | 5 · Auth, audit, tracing, tests, Docker | ✅ Complete |
 | 6 · Azure integration | ✅ Complete |
 | 7 · ITSM ticket lifecycle | ✅ Complete |
-| Next · PostgreSQL, JWT, LangGraph, dashboards, notifications | 📋 Planned |
+| 8 · JWT auth + admin assignment + PostgreSQL-ready | ✅ Complete |
+| Next · SMTP notifications, SLA escalation, LangGraph | 📋 Planned |
 
 ---
 

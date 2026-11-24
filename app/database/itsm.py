@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.config import get_settings
+from app.database.connection import as_dict, connect, execute_script, q
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +47,8 @@ DEFAULT_SLA_HOURS = {"critical": 2, "high": 8, "medium": 24, "low": 72}
 # Connection / schema
 # ---------------------------------------------------------------------------
 
-def _connect() -> sqlite3.Connection:
-    settings = get_settings()
-    path = settings.sqlite_path
-    parent = os.path.dirname(path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    conn = sqlite3.connect(path, timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+def _connect():
+    return connect()
 
 
 def ensure_itsm_schema() -> None:
@@ -157,8 +150,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    return dict(row)
+def _row_to_dict(row) -> Dict[str, Any]:
+    return as_dict(row)
 
 
 # ---------------------------------------------------------------------------

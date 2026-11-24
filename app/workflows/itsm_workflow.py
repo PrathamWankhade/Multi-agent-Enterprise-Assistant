@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from app.agents.classifier import ClassificationAgent
 from app.database import itsm as db
+from app.database import users as user_db
 
 logger = logging.getLogger(__name__)
 
@@ -75,16 +76,31 @@ async def run_itsm_workflow(
         task_id=task_id, session_id=session_id, input_data={"message": message}
     )
     hints = await troubleshooting_hints(message)
-    ticket = db.create_ticket(
+    ticket_data = dict(
         title=classification.get("issue_type") or message[:80],
         description=message,
         category=classification.get("category", "other"),
         issue_type=classification.get("issue_type", ""),
         suggested_priority=classification.get("suggested_priority", "medium"),
         requester=requester,
+        requester_department="",
         confidence=classification.get("confidence"),
         classification_reasoning=classification.get("reasoning", ""),
     )
+    try:
+        from app.api.admin_routes import apply_user_rules
+
+        user = user_db.get_by_username(requester) if requester != "employee" else None
+        if user:
+            ticket_data["requester_department"] = user.get("department", "")
+        rules = apply_user_rules(ticket_data)
+        if rules.get("priority"):
+            ticket_data["suggested_priority"] = rules["priority"]
+            classification["priority_source"] = "admin_rule"
+    except Exception:  # pragma: no cover - rules are optional
+        pass
+
+    ticket = db.create_ticket(**ticket_data)
     return {
         "mode": "create",
         "ticket": ticket,

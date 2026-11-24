@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router
 from app.api.itsm_routes import router as itsm_router
+from app.api.auth_routes import router as auth_router
+from app.api.admin_routes import router as admin_router
 from app.config import get_settings
 
 
@@ -69,8 +71,10 @@ async def lifespan(_: FastAPI):
     _register_tools()
     try:
         from app.database.itsm import ensure_itsm_schema
+        from app.database.users import ensure_users_schema
 
         ensure_itsm_schema()
+        ensure_users_schema()
     except Exception as exc:  # pragma: no cover - best effort
         logger.warning("ITSM schema setup skipped: %s", exc)
     await _seed_knowledge_base()
@@ -104,6 +108,8 @@ app.add_middleware(
 
 app.include_router(router, prefix="/api/v1")
 app.include_router(itsm_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
 
 # Serve frontend
 frontend_dir = Path(__file__).parent.parent / "frontend"

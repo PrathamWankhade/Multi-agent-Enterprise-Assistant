@@ -7,6 +7,27 @@ const $ = (id) => document.getElementById(id);
 const STORE_KEY = 'eaa.sessions.v1';
 const THEME_KEY = 'eaa.theme';
 const KEY_STORAGE = 'eaa.apikey';
+const JWT_STORAGE = 'eaa.jwt';
+const USER_STORAGE = 'eaa.user';
+
+function getToken() {
+  try { return localStorage.getItem(JWT_STORAGE) || ''; } catch (_) { return ''; }
+}
+function setToken(value) {
+  try {
+    if (value) localStorage.setItem(JWT_STORAGE, value);
+    else localStorage.removeItem(JWT_STORAGE);
+  } catch (_) {}
+}
+function getStoredUser() {
+  try { return JSON.parse(localStorage.getItem(USER_STORAGE) || 'null'); } catch (_) { return null; }
+}
+function setStoredUser(value) {
+  try {
+    if (value) localStorage.setItem(USER_STORAGE, JSON.stringify(value));
+    else localStorage.removeItem(USER_STORAGE);
+  } catch (_) {}
+}
 
 function getApiKey() {
   try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (_) { return ''; }
@@ -24,10 +45,16 @@ function apiFetch(path, options) {
   const headers = Object.assign({}, opts.headers || {});
   const key = getApiKey();
   if (key) headers['X-API-Key'] = key;
+  const token = getToken();
+  if (token) headers['Authorization'] = 'Bearer ' + token;
   opts.headers = headers;
   return fetch(API + path, opts).then((res) => {
-    if (res.status === 401 || res.status === 403) {
-      toast('Authentication required — set an API key', true);
+    if (res.status === 401 && !path.startsWith('/auth/')) {
+      toast('Please sign in to continue', true);
+      openLogin();
+    }
+    if (res.status === 403) {
+      toast('You do not have permission for that action', true);
     }
     return res;
   });
@@ -954,6 +981,79 @@ async function openKnowledgeBase() {
   }
 }
 
+async function openLogin() {
+  const node = document.createElement('div');
+  node.style.display = 'flex';
+  node.style.flexDirection = 'column';
+  node.style.gap = '14px';
+  node.innerHTML =
+    '<p class="approval-note">Sign in with your company account. Defaults: <code>admin / Admin123!</code>, <code>employee / User123!</code>, <code>technician / Tech123!</code></p>' +
+    '<div class="field"><label for="login-user">Username</label><input id="login-user" autocomplete="username" placeholder="admin"></div>' +
+    '<div class="field"><label for="login-pass">Password</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••"></div>' +
+    '<p class="empty-note" id="login-error" hidden></p>';
+  const row = document.createElement('div');
+  row.className = 'approval-actions';
+  const submit = document.createElement('button');
+  submit.type = 'button';
+  submit.className = 'btn btn-primary btn-sm';
+  submit.textContent = 'Sign in';
+  submit.addEventListener('click', async () => {
+    const username = $('login-user').value.trim();
+    const password = $('login-pass').value;
+    if (!username || !password) return;
+    submit.disabled = true;
+    submit.textContent = 'Signing in…';
+    $('login-error').hidden = true;
+    try {
+      const r = await apiFetch('/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!r.ok) throw new Error('Invalid credentials');
+      const data = await r.json();
+      setToken(data.access_token);
+      setStoredUser(data.user);
+      closeModal();
+      toast('Signed in as ' + data.user.username);
+      updateUserChip();
+      renderMessages();
+    } catch (e) {
+      $('login-error').textContent = e.message;
+      $('login-error').hidden = false;
+      submit.disabled = false;
+      submit.textContent = 'Sign in';
+    }
+  });
+  row.appendChild(submit);
+  node.appendChild(row);
+  openModal('Sign in', node);
+  $('login-user').focus();
+}
+
+function logout() {
+  setToken('');
+  setStoredUser('');
+  updateUserChip();
+  renderMessages();
+  toast('Signed out');
+}
+
+function updateUserChip() {
+  const chip = $('user-chip');
+  if (!chip) return;
+  const user = getStoredUser();
+  if (user) {
+    chip.innerHTML = '<span class="chip accent">' + escapeHtml(user.role) + '</span> ' +
+      escapeHtml(user.username) + ' <button class="tool-btn" id="logout-btn" type="button">Sign out</button>';
+    const btn = $('logout-btn');
+    if (btn) btn.addEventListener('click', logout);
+  } else {
+    chip.innerHTML = '<button class="tool-btn" id="login-btn" type="button">Sign in</button>';
+    const btn = $('login-btn');
+    if (btn) btn.addEventListener('click', openLogin);
+  }
+}
+
 function openApiKeyModal() {
   const node = document.createElement('div');
   node.style.display = 'flex';
@@ -1017,6 +1117,7 @@ async function renderServiceDesk(node, tab) {
     ['mine', 'My requests'],
     ['approvals', 'Approval queue'],
     ['technician', 'Technician queue'],
+    ['admin', 'Admin assignments'],
   ];
   const bar = document.createElement('div');
   bar.className = 'desk-tabs';
@@ -1039,6 +1140,7 @@ async function renderServiceDesk(node, tab) {
   let endpoint = '/itsm/tickets?limit=50';
   if (tab === 'approvals') endpoint = '/itsm/approvals';
   if (tab === 'technician') endpoint = '/itsm/tickets?status=in_progress&limit=50';
+  if (tab === 'admin') endpoint = '/admin/tickets?limit=100';
 
   try {
     const r = await apiFetch(endpoint);
@@ -1133,6 +1235,49 @@ function deskTicketRow(t, tab, refresh) {
     });
     actions.appendChild(start);
     actions.appendChild(resolve);
+  }
+
+  if (tab === 'admin' && t.status !== 'closed' && t.status !== 'rejected') {
+    const assignWrap = document.createElement('div');
+    assignWrap.className = 'admin-assign';
+    const tech = document.createElement('input');
+    tech.type = 'text';
+    tech.placeholder = 'Technician (optional)';
+    tech.value = t.technician || '';
+    tech.className = 'admin-input';
+    const pri = document.createElement('select');
+    pri.className = 'admin-input';
+    ['critical', 'high', 'medium', 'low'].forEach((p) => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.textContent = 'Priority: ' + p;
+      if (p === t.priority) opt.selected = true;
+      pri.appendChild(opt);
+    });
+    const apply = document.createElement('button');
+    apply.type = 'button';
+    apply.className = 'btn btn-primary btn-sm';
+    apply.textContent = 'Assign';
+    apply.addEventListener('click', async () => {
+      apply.disabled = true;
+      try {
+        const r = await apiFetch('/admin/tickets/' + encodeURIComponent(t.ticket_id) + '/assign', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            technician: tech.value.trim() || undefined,
+            priority: pri.value,
+            note: 'Assigned by admin',
+          }),
+        });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        toast('Task assigned · priority ' + pri.value);
+        refresh();
+      } catch (e) { toast('Assignment failed: ' + e.message, true); apply.disabled = false; }
+    });
+    assignWrap.appendChild(tech);
+    assignWrap.appendChild(pri);
+    assignWrap.appendChild(apply);
+    row.appendChild(assignWrap);
   }
 
   const track = document.createElement('button');
@@ -1340,6 +1485,7 @@ function init() {
   state.activeId = state.sessions[0].id;
   bindEvents();
   renderAll();
+  updateUserChip();
   updateCounter();
   loadHealth();
   loadKbCount();

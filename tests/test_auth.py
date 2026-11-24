@@ -87,4 +87,6 @@ def test_auth_failures_are_audited(auth_client):
     ).json()["entries"]
     failures = [e for e in entries if e["event"] == "auth_failed"]
     assert failures
-    assert failures[-1]["reason"] in {"invalid_key", "missing_key", "insufficient_role"}
+    assert failures[-1]["reason"] in {
+        "invalid_key", "missing_key", "insufficient_role", "missing_or_invalid_token"
+    }

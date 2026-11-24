@@ -64,6 +64,7 @@ If Redis is unreachable, a shared in-process store is used. The connection is pr
 | `EXECUTION_REQUIRE_APPROVAL` | `true` | Require approval for write actions |
 | `ALLOWED_EXECUTION_DOMAINS` | – | Comma-separated domains for direct HTTP calls |
 | `SQLITE_PATH` | `data/enterprise.db` | Mock ERP + ITSM database |
+| `DATABASE_URL` | – | PostgreSQL URL (needs `requirements-postgres.txt`; SQLite fallback) |
 | `REPORTS_DIR` | `reports` | CSV report output directory |
 | `ITSM_SLA_HOURS` | `critical:2,high:8,medium:24,low:72` | SLA deadlines by priority |
 
@@ -73,8 +74,9 @@ If Redis is unreachable, a shared in-process store is used. The connection is pr
 
 | Variable | Default | Description |
 |---|---|---|
-| `AUTH_ENABLED` | `false` | Enable API-key authentication |
-| `API_KEYS` | – | `key1:admin,key2:user,key3:viewer` |
+| `AUTH_ENABLED` | `false` | Enable API-key / JWT authentication |
+| `API_KEYS` | – | `key1:admin,key2:user,key3:viewer` (fallback keys) |
+| `SECRET_KEY` | `change-this-in-production` | JWT signing secret (use 32+ random chars) |
 | `AUDIT_DIR` | `logs` | Audit log directory |
 | `TRACING_ENABLED` | `true` | Record per-agent execution timings |
 | `SECRET_KEY` | `change-this-in-production` | App secret |

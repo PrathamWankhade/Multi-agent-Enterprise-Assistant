@@ -48,8 +48,10 @@ async def _troubleshooting_hints(message: str) -> List[Dict[str, Any]]:
 
 
 @router.post("/itsm/requests", tags=["itsm"])
-async def create_request(request: ServiceRequestCreate, _role=require_user):
+async def create_request(request: ServiceRequestCreate, actor=require_user):
     """Employee reports a problem: classify, find KB hints, create a pending ticket."""
+    from app.api.admin_routes import apply_user_rules
+
     task_id = MemoryStore.generate_id()
     classification = await ClassificationAgent().run(
         task_id=task_id,
@@ -58,17 +60,30 @@ async def create_request(request: ServiceRequestCreate, _role=require_user):
     )
     hints = await _troubleshooting_hints(request.message)
 
-    ticket = db.create_ticket(
+    requester = request.requester
+    department = request.department
+    if actor is not None:
+        requester = actor.username
+        department = department or actor.department or ""
+
+    ticket_data = dict(
         title=request.title or classification.get("issue_type") or request.message[:80],
         description=request.message,
         category=classification.get("category", "other"),
         issue_type=classification.get("issue_type", ""),
         suggested_priority=classification.get("suggested_priority", "medium"),
-        requester=request.requester,
-        requester_department=request.department,
+        requester=requester,
+        requester_department=department,
         confidence=classification.get("confidence"),
         classification_reasoning=classification.get("reasoning", ""),
     )
+    # Admin-defined per-user / per-department rules can set the initial priority.
+    rules = apply_user_rules(ticket_data)
+    if rules.get("priority"):
+        ticket_data["suggested_priority"] = rules["priority"]
+        classification["priority_source"] = "admin_rule"
+
+    ticket = db.create_ticket(**ticket_data)
     audit_record(
         "itsm_request_created",
         ticket_id=ticket.get("ticket_id"),
@@ -168,7 +183,7 @@ async def approve_ticket(ticket_id: str, decision: TicketDecision, role=require_
         "itsm_ticket_approved",
         ticket_id=ticket_id,
         actor=decision.actor,
-        role=role.name if role else None,
+        role=role.role if role else None,
         priority_override=decision.priority,
     )
     return {"status": "approved", "ticket": db.get_ticket(ticket_id), "history": db.get_history(ticket_id)}
@@ -189,7 +204,7 @@ async def reject_ticket(ticket_id: str, decision: TicketDecision, role=require_a
         rejection_reason=decision.note,
     )
     audit_record("itsm_ticket_rejected", ticket_id=ticket_id, actor=decision.actor,
-                 role=role.name if role else None)
+                 role=role.role if role else None)
     return {"status": "rejected", "ticket": db.get_ticket(ticket_id)}
 
 
@@ -204,7 +219,7 @@ async def update_ticket(ticket_id: str, update: TicketUpdate, role=require_user)
             updates["resolved_at"] = __import__("datetime").datetime.utcnow().isoformat(timespec="seconds")
         ticket = db.transition_ticket(
             ticket_id, update.status, update.actor,
-            role.name if role else "", update.note or "", **updates,
+            role.role if role else "", update.note or "", **updates,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
